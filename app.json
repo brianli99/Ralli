@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "Ralli",
+    "slug": "ralli",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a73e8"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Ralli needs location access to help you check into courts and find nearby games.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Ralli needs location access to help you check into courts and find nearby games."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1a73e8"
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ],
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow Ralli to use your location to check into courts and find nearby games.",
+          "locationWhenInUsePermission": "Allow Ralli to use your location to check into courts and find nearby games."
+        }
+      ]
+    ]
+  }
+}
