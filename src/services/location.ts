@@ -1,5 +1,6 @@
 import * as Location from 'expo-location';
 import { Alert } from 'react-native';
+import { CHECK_IN_RADIUS_METERS } from '../constants/checkIn';
 
 export class LocationService {
   static async requestPermissions(): Promise<boolean> {
@@ -69,7 +70,7 @@ export class LocationService {
     userLon: number,
     courtLat: number,
     courtLon: number,
-    maxDistance: number = 100 // meters
+    maxDistance: number = CHECK_IN_RADIUS_METERS
   ): boolean {
     const distance = this.calculateDistance(userLat, userLon, courtLat, courtLon);
     return distance <= maxDistance;
@@ -89,9 +90,9 @@ export class LocationService {
 
       return await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.High,
-          timeInterval: 1000,
-          distanceInterval: 1,
+          accuracy: Location.Accuracy.Balanced,
+          timeInterval: 15000,
+          distanceInterval: 20,
         },
         callback
       );

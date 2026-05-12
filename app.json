@@ -2,7 +2,8 @@
   "expo": {
     "name": "Ralli",
     "slug": "ralli",
-    "version": "1.0.0",
+    "scheme": "ralli",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -17,9 +18,12 @@
     ],
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.ralli.app",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Ralli needs location access to help you check into courts and find nearby games.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Ralli needs location access to help you check into courts and find nearby games."
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Ralli needs location access to help you check into courts and find nearby games.",
+        "NSCameraUsageDescription": "Ralli needs camera access to scan QR codes for adding friends and joining squads.",
+        "NSPhotoLibraryUsageDescription": "Ralli needs photo library access to set your profile picture."
       }
     },
     "android": {
@@ -27,9 +31,13 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1a73e8"
       },
+      "package": "com.ralli.app",
       "permissions": [
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
       ],
       "edgeToEdgeEnabled": true
     },
@@ -43,7 +51,29 @@
           "locationAlwaysAndWhenInUsePermission": "Allow Ralli to use your location to check into courts and find nearby games.",
           "locationWhenInUsePermission": "Allow Ralli to use your location to check into courts and find nearby games."
         }
-      ]
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Ralli to access the camera to scan QR codes."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Ralli to access your photos to set a profile picture.",
+          "cameraPermission": "Allow Ralli to take photos for your profile picture."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#FF6B35"
+        }
+      ],
+      "expo-asset",
+      "@sentry/react-native"
     ]
   }
 }

@@ -16,13 +16,15 @@ export class AuthService {
 
     if (error) throw error;
 
-    // Create user profile
+    // Upsert profile in case the DB trigger hasn't fired yet or doesn't exist
     if (data.user) {
-      await supabase.from('users').insert({
+      await supabase.from('users').upsert({
         id: data.user.id,
         email: data.user.email!,
         full_name: fullName,
         preferred_sports: [],
+      }, { onConflict: 'id' }).then(({ error: profileErr }) => {
+        if (profileErr) console.error('Profile upsert error (non-fatal):', profileErr);
       });
     }
 
@@ -70,6 +72,22 @@ export class AuthService {
       .select()
       .single();
 
+    if (error) throw error;
+    return data;
+  }
+
+  static async resetPassword(email: string) {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      // This deep link should match the Supabase auth redirect config
+      redirectTo: 'ralli://reset-password',
+    });
+    if (error) throw error;
+  }
+
+  static async updatePassword(newPassword: string) {
+    const { data, error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
     if (error) throw error;
     return data;
   }

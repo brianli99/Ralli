@@ -1,115 +1,67 @@
 import { supabase } from './supabase';
-import { useAuth } from '../contexts/AuthContext';
+
+export type OccupancyLevel = 'low' | 'medium' | 'high' | 'full';
 
 export interface FacilityCapacity {
   id: string;
-  facility_id: string;
-  occupancy_percentage: number;
-  occupancy_level: 'low' | 'medium' | 'high' | 'full';
-  reported_at: string;
-  user_id: string;
+  google_place_id: string; // Changed from facility_id to google_place_id
   sport: string;
+  current_players: number;
+  max_capacity: number;
+  last_updated: string;
 }
 
 export interface CapacityReport {
-  facilityId: string;
+  googlePlaceId: string; // Changed from facilityId to googlePlaceId
   sport: string;
   occupancyLevel: 'low' | 'medium' | 'high' | 'full';
   notes?: string;
 }
 
 export class CapacityService {
-  // Report current capacity at a facility
-  static async reportCapacity(
-    facilityId: string,
-    sport: string,
-    occupancyLevel: 'low' | 'medium' | 'high' | 'full',
-    userId: string,
-    notes?: string
-  ): Promise<boolean> {
+  // Get capacity for a specific facility and sport
+  static async getCapacityForFacility(googlePlaceId: string, sport: string): Promise<FacilityCapacity | null> {
     try {
-      const occupancyMap = { 
-        low: 25, 
-        medium: 50, 
-        high: 75, 
-        full: 100 
-      };
-      
-      const { error } = await supabase.from('facility_capacity').insert({
-        facility_id: facilityId,
-        occupancy_percentage: occupancyMap[occupancyLevel],
-        occupancy_level: occupancyLevel,
-        sport: sport,
-        reported_at: new Date().toISOString(),
-        user_id: userId,
-        notes: notes
-      });
-
-      if (error) {
-        console.error('Error reporting capacity:', error);
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Error in reportCapacity:', error);
-      return false;
-    }
-  }
-
-  // Get latest capacity report for a facility
-  static async getLatestCapacity(facilityId: string, sport?: string): Promise<FacilityCapacity | null> {
-    try {
-      let query = supabase
+      const { data, error } = await supabase
         .from('facility_capacity')
         .select('*')
-        .eq('facility_id', facilityId)
-        .order('reported_at', { ascending: false })
-        .limit(1);
+        .eq('google_place_id', googlePlaceId)
+        .eq('sport', sport)
+        .single();
 
-      if (sport) {
-        query = query.eq('sport', sport);
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
         console.error('Error getting capacity:', error);
         return null;
       }
 
-      return data && data.length > 0 ? data[0] : null;
+      return data;
     } catch (error) {
-      console.error('Error in getLatestCapacity:', error);
+      console.error('Error in getCapacityForFacility:', error);
       return null;
     }
   }
 
-  // Get capacity reports for multiple facilities
-  static async getCapacitiesForFacilities(facilityIds: string[]): Promise<Record<string, FacilityCapacity>> {
-    if (facilityIds.length === 0) return {};
+  // Get capacities for multiple facilities
+  static async getCapacitiesForFacilities(googlePlaceIds: string[]): Promise<Record<string, FacilityCapacity>> {
+    if (googlePlaceIds.length === 0) return {};
 
     try {
-      // Get the most recent capacity report for each facility
       const { data, error } = await supabase
         .from('facility_capacity')
         .select('*')
-        .in('facility_id', facilityIds)
-        .gte('reported_at', new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString()) // Last 6 hours
-        .order('reported_at', { ascending: false });
+        .in('google_place_id', googlePlaceIds);
 
       if (error) {
         console.error('Error getting capacities:', error);
         return {};
       }
 
-      // Group by facility_id and take the most recent report for each
+      // Group by google_place_id and sport
       const capacitiesMap: Record<string, FacilityCapacity> = {};
       
       data?.forEach(capacity => {
-        if (!capacitiesMap[capacity.facility_id]) {
-          capacitiesMap[capacity.facility_id] = capacity;
-        }
+        const key = `${capacity.google_place_id}_${capacity.sport}`;
+        capacitiesMap[key] = capacity;
       });
 
       return capacitiesMap;
@@ -119,47 +71,107 @@ export class CapacityService {
     }
   }
 
-  // Get capacity history for a facility
-  static async getCapacityHistory(facilityId: string, hours: number = 24): Promise<FacilityCapacity[]> {
+  // Update capacity when someone checks in
+  static async updateCapacityOnCheckIn(googlePlaceId: string, sport: string): Promise<boolean> {
     try {
-      const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+      // First, try to get existing capacity record
+      const existing = await this.getCapacityForFacility(googlePlaceId, sport);
+      
+      if (existing) {
+        // Update existing record
+        const { error } = await supabase
+          .from('facility_capacity')
+          .update({
+            current_players: existing.current_players + 1,
+            last_updated: new Date().toISOString()
+          })
+          .eq('id', existing.id);
 
-      const { data, error } = await supabase
-        .from('facility_capacity')
-        .select('*')
-        .eq('facility_id', facilityId)
-        .gte('reported_at', since)
-        .order('reported_at', { ascending: true });
+        if (error) {
+          console.error('Error updating capacity:', error);
+          return false;
+        }
+      } else {
+        // Create new capacity record
+        const { error } = await supabase
+          .from('facility_capacity')
+          .insert({
+            google_place_id: googlePlaceId,
+            sport: sport,
+            current_players: 1,
+            max_capacity: this.getDefaultMaxCapacity(sport),
+            last_updated: new Date().toISOString()
+          });
 
-      if (error) {
-        console.error('Error getting capacity history:', error);
-        return [];
+        if (error) {
+          console.error('Error creating capacity:', error);
+          return false;
+        }
       }
 
-      return data || [];
+      return true;
     } catch (error) {
-      console.error('Error in getCapacityHistory:', error);
-      return [];
+      console.error('Error in updateCapacityOnCheckIn:', error);
+      return false;
     }
   }
 
-  // Get average capacity for a facility at specific times
-  static async getAverageCapacityByHour(facilityId: string, dayOfWeek: number): Promise<Record<number, number>> {
+  // Update capacity when someone checks out
+  static async updateCapacityOnCheckOut(googlePlaceId: string, sport: string): Promise<boolean> {
     try {
-      // This would require a more complex query - for now return empty
-      // In a real implementation, you'd analyze historical data by hour of day
-      return {};
+      const existing = await this.getCapacityForFacility(googlePlaceId, sport);
+      
+      if (existing && existing.current_players > 0) {
+        const { error } = await supabase
+          .from('facility_capacity')
+          .update({
+            current_players: Math.max(0, existing.current_players - 1),
+            last_updated: new Date().toISOString()
+          })
+          .eq('id', existing.id);
+
+        if (error) {
+          console.error('Error updating capacity on checkout:', error);
+          return false;
+        }
+      }
+
+      return true;
     } catch (error) {
-      console.error('Error in getAverageCapacityByHour:', error);
-      return {};
+      console.error('Error in updateCapacityOnCheckOut:', error);
+      return false;
     }
   }
 
-  // Check if capacity report is recent (within last 2 hours)
-  static isCapacityReportRecent(capacity: FacilityCapacity): boolean {
-    const reportTime = new Date(capacity.reported_at).getTime();
+  // Get default max capacity for a sport
+  private static getDefaultMaxCapacity(sport: string): number {
+    switch (sport) {
+      case 'basketball': return 10;
+      case 'tennis': return 4;
+      case 'pickleball': return 8;
+      case 'volleyball': return 12;
+      case 'soccer': return 22;
+      case 'badminton': return 4;
+      default: return 20;
+    }
+  }
+
+  // Get capacity level based on current vs max players
+  static getCapacityLevel(currentPlayers: number, maxCapacity: number): 'low' | 'medium' | 'high' | 'full' {
+    if (!maxCapacity || maxCapacity <= 0) return 'low';
+    const percentage = (currentPlayers / maxCapacity) * 100;
+    
+    if (percentage < 25) return 'low';
+    if (percentage < 50) return 'medium';
+    if (percentage < 75) return 'high';
+    return 'full';
+  }
+
+  // Check if capacity data is recent (within last 2 hours)
+  static isCapacityDataRecent(capacity: FacilityCapacity): boolean {
+    const lastUpdated = new Date(capacity.last_updated).getTime();
     const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
-    return reportTime > twoHoursAgo;
+    return lastUpdated > twoHoursAgo;
   }
 
   // Get capacity level color for UI
@@ -192,6 +204,105 @@ export class CapacityService {
       case 'high': return 'High activity';
       case 'full': return 'Very busy';
       default: return 'Unknown';
+    }
+  }
+
+  // Get capacity percentage for visualization
+  static getCapacityPercentage(currentPlayers: number, maxCapacity: number): number {
+    if (!maxCapacity || maxCapacity <= 0) return 0;
+    return Math.round((currentPlayers / maxCapacity) * 100);
+  }
+
+  // Get capacity label for display
+  static getCapacityLabel(level: 'low' | 'medium' | 'high' | 'full'): string {
+    switch (level) {
+      case 'low': return 'Low activity';
+      case 'medium': return 'Moderate';
+      case 'high': return 'Busy';
+      case 'full': return 'Full';
+      default: return 'Unknown';
+    }
+  }
+
+  // Get capacity description
+  static getCapacityDescription(level: 'low' | 'medium' | 'high' | 'full'): string {
+    switch (level) {
+      case 'low': return 'Plenty of space available';
+      case 'medium': return 'Moderately busy, good time to play';
+      case 'high': return 'Getting crowded, expect some wait';
+      case 'full': return 'Facility at capacity';
+      default: return 'Capacity status unknown';
+    }
+  }
+
+  // Report capacity from user observation
+  static async reportCapacity(
+    googlePlaceId: string,
+    sport: string,
+    occupancyLevel: 'low' | 'medium' | 'high' | 'full',
+    userId: string
+  ): Promise<boolean> {
+    try {
+      // Convert occupancy level to player count estimate
+      const maxCapacity = this.getDefaultMaxCapacity(sport);
+      let estimatedPlayers: number;
+      
+      switch (occupancyLevel) {
+        case 'low': estimatedPlayers = Math.floor(maxCapacity * 0.15); break;
+        case 'medium': estimatedPlayers = Math.floor(maxCapacity * 0.4); break;
+        case 'high': estimatedPlayers = Math.floor(maxCapacity * 0.7); break;
+        case 'full': estimatedPlayers = maxCapacity; break;
+        default: estimatedPlayers = 0;
+      }
+
+      // Upsert capacity record
+      const { error } = await supabase
+        .from('facility_capacity')
+        .upsert({
+          google_place_id: googlePlaceId,
+          sport: sport,
+          current_players: estimatedPlayers,
+          max_capacity: maxCapacity,
+          reported_by: userId,
+          last_updated: new Date().toISOString(),
+        }, {
+          onConflict: 'google_place_id,sport',
+        });
+
+      if (error) {
+        console.error('Error reporting capacity:', error);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error in reportCapacity:', error);
+      return false;
+    }
+  }
+
+  // Alias for backwards compatibility
+  static isCapacityReportRecent(capacity: FacilityCapacity): boolean {
+    return this.isCapacityDataRecent(capacity);
+  }
+
+  // Get all capacities for a facility (all sports)
+  static async getFacilityCapacities(googlePlaceId: string): Promise<FacilityCapacity[]> {
+    try {
+      const { data, error } = await supabase
+        .from('facility_capacity')
+        .select('*')
+        .eq('google_place_id', googlePlaceId);
+
+      if (error) {
+        console.error('Error getting facility capacities:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Error in getFacilityCapacities:', error);
+      return [];
     }
   }
 }
